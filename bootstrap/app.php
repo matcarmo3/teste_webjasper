@@ -3,8 +3,8 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,17 +17,25 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        $exceptions->render(function (Exception $e, Request $request) {
+        $exceptions->render(function (Throwable $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
-                $statusCode = method_exists($e, 'getStatusCode')
-                    ? $e->getStatusCode()
-                    : 500;
 
-                return response()->json([
+                $response = [
                     'success' => false,
                     'message' => $e->getMessage(),
-                    'error_code' => 'INTERNAL_ERROR'
-                ], $statusCode);
+                ];
+                $statusCode = 500;
+                if ($e instanceof ValidationException) {
+                    $statusCode = 422;
+                    $response['errors'] = $e->errors();
+                } elseif (method_exists($e, 'getStatusCode')) {
+                    $statusCode = $e->getStatusCode();
+                }
+                if ($statusCode === 500 && app()->environment('production')) {
+                    $response['message'] = 'Erro interno do servidor';
+                }
+
+                return response()->json($response, $statusCode);
             }
         });
     })->create();
