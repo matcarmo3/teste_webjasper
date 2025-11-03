@@ -30,7 +30,7 @@ class OrderService
             $total = 0;
             $order = $this->repository->create([
                 'user_id' => $userId,
-                'total_amount' => 0, // Atualizamos depois
+                'total_amount' => 0,
                 'status' => 'pending'
             ]);
 
@@ -61,8 +61,18 @@ class OrderService
     {
         $order = $this->getOrderOrFail($id);
         $order->update(['status' => $status]);
+        if ($status === 'cancelled') {
+            $this->restockProducts($order);
+        }
 
         return $order;
+    }
+
+    private function restockProducts(Order $order)
+    {
+        foreach ($order->products as $product) {
+            $product->increment('stock', $product->pivot->quantity);
+        }
     }
 
     private function getOrderOrFail($id)
