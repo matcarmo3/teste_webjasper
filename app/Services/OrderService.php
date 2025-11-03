@@ -6,6 +6,7 @@ use App\Repositories\OrderRepository;
 use App\Models\Order;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
+use App\Enum\OrderStatus;
 
 class OrderService
 {
@@ -31,7 +32,7 @@ class OrderService
             $order = $this->repository->create([
                 'user_id' => $userId,
                 'total_amount' => 0,
-                'status' => 'pending'
+                'status' => OrderStatus::PENDING->value,
             ]);
 
             foreach ($data['products'] as $item) {
@@ -57,14 +58,65 @@ class OrderService
         });
     }
 
-    public function updateStatus($id, string $status)
+    public function update($id, array $data)
     {
         $order = $this->getOrderOrFail($id);
-        $order->update(['status' => $status]);
-        if ($status === 'cancelled') {
-            $this->restockProducts($order);
+
+        if ($order->status !== OrderStatus::PENDING) {
+            throw new \Exception("Somente pedidos pendentes podem ser editados.");
         }
 
+        return DB::transaction(function () use ($order, $data) {
+            $this->restockProducts($order);
+            $order->products()->detach();
+            $total = 0;
+            foreach ($data['products'] as $item) {
+                $product = Product::findOrFail($item['id']);
+                if ($product->stock < $item['quantity']) {
+                    throw new \Exception("Estoque insuficiente para o produto {$product->name}");
+                }
+
+                $product->decrement('stock', $item['quantity']);
+                $order->products()->attach($product->id, [
+                    'quantity' => $item['quantity'],
+                    'price' => $product->price,
+                ]);
+
+                $total += $product->price * $item['quantity'];
+            }
+
+            $order->update(['total_amount' => $total]);
+            return $order->fresh(['products']);
+        });
+    }
+
+    public function cancel($id)
+    {
+        $order = $this->getOrderOrFail($id);
+
+        if ($order->status === OrderStatus::CANCELLED) {
+            throw new \Exception("Pedido já está cancelado.");
+        }
+
+        if ($order->status === OrderStatus::COMPLETED) {
+            throw new \Exception("Não é possível cancelar um pedido já finalizado.");
+        }
+
+        $order->update(['status' => OrderStatus::CANCELLED->value]);
+        $this->restockProducts($order);
+
+        return $order;
+    }
+
+    public function complete($id)
+    {
+        $order = $this->getOrderOrFail($id);
+
+        if ($order->status !== OrderStatus::PENDING) {
+            throw new \Exception("Somente pedidos pendentes podem ser finalizados.");
+        }
+
+        $order->update(['status' => OrderStatus::COMPLETED->value]);
         return $order;
     }
 
@@ -86,5 +138,4 @@ class OrderService
         }
         return $order;
     }
-
 }

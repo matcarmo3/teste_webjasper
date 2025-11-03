@@ -29,6 +29,6 @@ class OrderRepository
 
     public function delete(Order $order)
     {
-        return $order->delete(); // Não será usado diretamente, só alteraremos status
+        return $order->delete();
     }
 }

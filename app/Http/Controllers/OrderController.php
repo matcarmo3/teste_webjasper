@@ -6,6 +6,7 @@ use App\Http\Requests\StoreOrderRequest;
 use App\Http\Requests\UpdateOrderRequest;
 use App\Http\Resources\OrderResource;
 use App\Services\OrderService;
+use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
@@ -30,8 +31,27 @@ class OrderController extends Controller
 
     public function update(UpdateOrderRequest $request, $id)
     {
-        $data = $request->validated();
-        $order = $this->service->updateStatus($id, $data['status']);
+        $order = $this->service->update($id, $request->validated());
         return new OrderResource($order);
+    }
+
+    public function cancel($id)
+    {
+        $order = $this->service->cancel($id);
+        return response()->json([
+            'success' => true,
+            'message' => 'Pedido cancelado com sucesso.',
+            'data' => new OrderResource($order)
+        ]);
+    }
+
+    public function complete($id)
+    {
+        $order = $this->service->complete($id);
+        return response()->json([
+            'success' => true,
+            'message' => 'Pedido finalizado com sucesso.',
+            'data' => new OrderResource($order)
+        ]);
     }
 }
